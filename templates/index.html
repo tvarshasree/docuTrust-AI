@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DocuTrust — Enterprise RAG Platform</title>
+<style>
+  /* ── Design tokens: dark (default) ───────────────────────────────── */
+  :root {
+    --bg:       #0b0e14;
+    --surface:  #111620;
+    --panel:    #161c28;
+    --border:   #1e2840;
+    --accent:   #3b82f6;
+    --accent2:  #06b6d4;
+    --success:  #10b981;
+    --warn:     #f59e0b;
+    --danger:   #ef4444;
+    --txt:      #e2e8f0;
+    --txt2:     #8899b4;
+    --txt3:     #4a5a78;
+    --glow:     0 0 20px rgba(59,130,246,0.15);
+    --shadow:   0 8px 30px rgba(0,0,0,.5);
+    --mono:     'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    --sans:     'Inter', system-ui, sans-serif;
+    --radius:   10px;
+  }
+
+  /* ── Design tokens: light ─────────────────────────────────────────── */
+  [data-theme="light"] {
+    --bg:       #f0f4f8;
+    --surface:  #ffffff;
+    --panel:    #f8fafc;
+    --border:   #dde3ed;
+    --accent:   #2563eb;
+    --accent2:  #0891b2;
+    --success:  #059669;
+    --warn:     #d97706;
+    --danger:   #dc2626;
+    --txt:      #0f172a;
+    --txt2:     #475569;
+    --txt3:     #94a3b8;
+    --glow:     0 0 20px rgba(37,99,235,0.12);
+    --shadow:   0 8px 30px rgba(0,0,0,.12);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--txt);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background .25s, color .25s;
+  }
+
+  /* ── Top bar ─────────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 56px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 16px;
+    transition: background .25s, border-color .25s;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--txt);
+  }
+  .logo svg { color: var(--accent); }
+  .logo span { color: var(--accent); }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--txt2);
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--txt3);
+    transition: background .3s;
+  }
+  .dot.live { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--txt2);
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: var(--sans);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--danger);
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: var(--sans);
+  }
+  .btn-danger:hover { background: rgba(220,38,38,.08); border-color: var(--danger); }
+
+  /* ── Theme toggle ─────────────────────────────────────────────────── */
+  .theme-toggle {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    transition: all .2s;
+    flex-shrink: 0;
+  }
+  .theme-toggle:hover { border-color: var(--accent); background: rgba(59,130,246,.07); }
+
+  /* ── Main layout ──────────────────────────────────────────────────── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 280px 1fr 340px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left: Document panel ─────────────────────────────────────────── */
+  .doc-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background .25s, border-color .25s;
+  }
+
+  .panel-header {
+    padding: 14px 16px 10px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--txt3);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .drop-zone {
+    margin: 16px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .25s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(59,130,246,0.05);
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-label { font-size: 12px; color: var(--txt2); line-height: 1.6; }
+  .drop-label strong { color: var(--accent); }
+  .drop-types { font-size: 10px; color: var(--txt3); margin-top: 6px; }
+
+  .doc-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
+
+  .doc-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 7px;
+    margin-bottom: 4px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    animation: slideIn .2s ease;
+    transition: background .25s, border-color .25s;
+  }
+  .doc-item .doc-icon { font-size: 16px; flex-shrink: 0; }
+  .doc-item .doc-info { flex: 1; min-width: 0; }
+  .doc-item .doc-name { color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc-item .doc-meta { color: var(--txt3); font-size: 10px; margin-top: 2px; }
+  .doc-item .doc-status { font-size: 10px; padding: 2px 7px; border-radius: 4px; flex-shrink: 0; }
+  .doc-item .doc-status.ready   { background: rgba(16,185,129,.12); color: var(--success); }
+  .doc-item .doc-status.loading { background: rgba(245,158,11,.10); color: var(--warn); }
+
+  /* ── Center: Chat ─────────────────────────────────────────────────── */
+  .chat-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+    transition: background .25s;
+  }
+
+  .chat-history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  .chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 12px;
+    color: var(--txt3);
+    text-align: center;
+  }
+  .chat-empty .empty-icon { font-size: 40px; opacity: .4; }
+  .chat-empty p { font-size: 13px; max-width: 280px; line-height: 1.6; }
+
+  .msg-row { display: flex; gap: 10px; align-items: flex-start; }
+  .msg-row.user { flex-direction: row-reverse; }
+
+  .msg-avatar {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .msg-row.user .msg-avatar { background: var(--accent); }
+  .msg-row.assistant .msg-avatar { background: var(--panel); border: 1px solid var(--border); }
+
+  .msg-bubble {
+    max-width: 72%;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13.5px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    transition: background .25s, border-color .25s;
+  }
+  .msg-row.user .msg-bubble {
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 3px;
+  }
+  .msg-row.assistant .msg-bubble {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--txt);
+    border-bottom-left-radius: 3px;
+  }
+
+  .msg-time { font-size: 10px; color: var(--txt3); margin-top: 4px; }
+  .msg-row.user .msg-time { text-align: right; }
+  .msg-row.assistant .msg-time { text-align: left; }
+
+  .citation-block {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(59,130,246,.07);
+    border: 1px solid rgba(59,130,246,.2);
+    border-radius: 7px;
+    font-size: 11.5px;
+    color: var(--accent2);
+    font-family: var(--mono);
+    line-height: 1.7;
+  }
+  [data-theme="light"] .citation-block {
+    background: rgba(37,99,235,.06);
+    border-color: rgba(37,99,235,.18);
+  }
+
+  .thinking-row { display: flex; gap: 10px; align-items: center; }
+  .thinking-dots span {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--txt3); margin: 0 2px;
+    animation: bounce 1.2s infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+
+  @keyframes bounce {
+    0%,80%,100% { transform: translateY(0); }
+    40%          { transform: translateY(-6px); }
+  }
+
+  /* ── Chat input ───────────────────────────────────────────────────── */
+  .chat-input-area {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    transition: background .25s, border-color .25s;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px 4px 4px 16px;
+    transition: border-color .2s, background .25s;
+  }
+  .input-row:focus-within { border-color: var(--accent); box-shadow: var(--glow); }
+
+  .input-row textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--txt);
+    font-size: 13.5px;
+    font-family: var(--sans);
+    resize: none;
+    height: 44px;
+    line-height: 1.6;
+    padding-top: 10px;
+  }
+  .input-row textarea::placeholder { color: var(--txt3); }
+
+  .send-btn {
+    width: 40px; height: 40px;
+    border-radius: 7px;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    transition: background .2s, transform .1s;
+    align-self: flex-end;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+  }
+  .send-btn:hover { background: #1d4ed8; }
+  .send-btn:active { transform: scale(0.95); }
+  .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+  .input-hint { font-size: 10.5px; color: var(--txt3); margin-top: 7px; text-align: center; }
+
+  /* ── Right: Logs panel ────────────────────────────────────────────── */
+  .log-panel {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background .25s, border-color .25s;
+  }
+
+  .log-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .log-tab {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 11px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--txt3);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+    font-family: var(--sans);
+    letter-spacing: 0.05em;
+  }
+  .log-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .log-tab:hover:not(.active) { color: var(--txt2); }
+
+  .log-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+  .log-stream { font-family: var(--mono); font-size: 11.5px; }
+
+  .log-entry {
+    display: flex;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    margin-bottom: 3px;
+    line-height: 1.5;
+    animation: fadeIn .15s ease;
+  }
+  .log-entry:hover { background: rgba(128,128,128,.06); }
+  .log-ts  { color: var(--txt3); flex-shrink: 0; font-size: 10px; padding-top: 1px; }
+  .log-msg { color: var(--txt2); flex: 1; word-break: break-word; }
+  .log-entry.success .log-msg { color: var(--success); }
+  .log-entry.warn    .log-msg { color: var(--warn); }
+  .log-entry.error   .log-msg { color: var(--danger); }
+  .log-entry.node    .log-msg { color: var(--accent2); }
+
+  .history-item {
+    padding: 10px;
+    border-radius: 7px;
+    margin-bottom: 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color .2s, background .25s;
+    animation: fadeIn .2s ease;
+  }
+  .history-item:hover { border-color: var(--accent); }
+  .history-q    { font-size: 12px; color: var(--txt); font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-meta { font-size: 10px; color: var(--txt3); }
+
+  .citation-item {
+    padding: 10px;
+    border-radius: 7px;
+    margin-bottom: 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-size: 11.5px;
+    font-family: var(--mono);
+    color: var(--accent2);
+    line-height: 1.7;
+    animation: fadeIn .2s ease;
+    transition: background .25s, border-color .25s;
+  }
+
+  /* ── Scrollbar ────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--txt3); }
+
+  /* ── Toast ────────────────────────────────────────────────────────── */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--txt);
+    font-size: 13px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    transition: transform .3s ease, background .25s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  .toast.show    { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.error   { border-color: var(--danger);  color: var(--danger);  }
+  .toast.info    { border-color: var(--accent);   color: var(--accent);  }
+
+  /* ── Upload progress ──────────────────────────────────────────────── */
+  .upload-progress {
+    margin: 0 16px 10px;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    display: none;
+  }
+  .upload-progress.active { display: block; }
+  .upload-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width .3s;
+    animation: shimmer 1s infinite;
+  }
+  @keyframes shimmer { 0%,100% { opacity:.8; } 50% { opacity:1; } }
+
+  /* ── Animations ───────────────────────────────────────────────────── */
+  @keyframes fadeIn  { from { opacity:0; }                          to { opacity:1; } }
+  @keyframes slideIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <path d="M9 12l2 2 4-4" stroke-width="2.5"/>
+    </svg>
+    Docu<span>Trust</span>
+  </div>
+
+  <div class="header-status">
+    <div class="dot" id="wsDot"></div>
+    <span id="wsStatus">Connecting…</span>
+    &nbsp;·&nbsp;
+    <span id="docCount">0 documents</span>
+  </div>
+
+  <div class="header-actions">
+    <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
+    <button class="btn-ghost" onclick="exportLogs()">⬇ Export Logs</button>
+    <button class="btn-danger" onclick="clearSession()">✕ Clear Session</button>
+  </div>
+</header>
+
+<!-- ── Workspace ──────────────────────────────────────────────────────────── -->
+<div class="workspace">
+
+  <!-- Left: Documents -->
+  <aside class="doc-panel">
+    <div class="panel-header">Knowledge Base</div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" multiple
+             accept=".pdf,.csv,.docx,.doc,.pptx,.ppt,.md,.html,.htm"
+             onchange="handleFiles(this.files)" />
+      <div class="drop-icon">📂</div>
+      <div class="drop-label"><strong>Drop files here</strong><br>or click to browse</div>
+      <div class="drop-types">PDF · CSV · DOCX · PPTX · MD · HTML</div>
+    </div>
+    <div class="upload-progress" id="uploadProgress">
+      <div class="upload-progress-bar" id="uploadBar"></div>
+    </div>
+    <div class="doc-list" id="docList"></div>
+  </aside>
+
+  <!-- Center: Chat -->
+  <main class="chat-panel">
+    <div class="chat-history" id="chatHistory">
+      <div class="chat-empty" id="chatEmpty">
+        <div class="empty-icon">🔐</div>
+        <p>Upload your organisation's documents, then ask anything. Answers are verified against your evidence only.</p>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <div class="input-row">
+        <textarea id="queryInput"
+          placeholder="Ask a question about your documents…"
+          onkeydown="handleKey(event)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendQuery()" title="Send (Enter)">➤</button>
+      </div>
+      <div class="input-hint">Enter to send · Shift+Enter for new line · Self-correcting RAG with citation verification</div>
+    </div>
+  </main>
+
+  <!-- Right: Logs / History / Citations -->
+  <aside class="log-panel">
+    <div class="log-tabs">
+      <button class="log-tab active" onclick="switchTab('logs', this)">⚡ Agent Logs</button>
+      <button class="log-tab" onclick="switchTab('history', this)">🕑 History</button>
+      <button class="log-tab" onclick="switchTab('citations', this)">📋 Citations</button>
+    </div>
+    <div class="log-content" id="tabLogs">
+      <div class="log-stream" id="logStream"></div>
+    </div>
+    <div class="log-content" id="tabHistory" style="display:none">
+      <div id="historyList"></div>
+    </div>
+    <div class="log-content" id="tabCitations" style="display:none">
+      <div id="citationList"></div>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws = null;
+let isThinking = false;
+let sessionLogs = [];
+let sessionHistory = [];
+let sessionCitations = [];
+let uploadedDocs = [];
+
+// ── Theme ──────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  document.getElementById('themeBtn').textContent = next === 'dark' ? '☀️' : '🌙';
+  localStorage.setItem('dt-theme', next);
+}
+
+// Apply saved preference on load
+(function() {
+  const saved = localStorage.getItem('dt-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  // Button text set after DOM ready (below in boot)
+})();
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/chat`);
+
+  ws.onopen = () => {
+    document.getElementById('wsDot').classList.add('live');
+    document.getElementById('wsStatus').textContent = 'Connected';
+    addLog('WebSocket connection established.', 'success');
+  };
+  ws.onclose = () => {
+    document.getElementById('wsDot').classList.remove('live');
+    document.getElementById('wsStatus').textContent = 'Reconnecting…';
+    setTimeout(connectWS, 2500);
+  };
+  ws.onerror = () => {
+    document.getElementById('wsStatus').textContent = 'Error';
+    addLog('WebSocket error — retrying…', 'error');
+  };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'log') addLog(msg.message, classifyLog(msg.message));
+    if (msg.type === 'answer') {
+      removeThinking();
+      const { answer, citations } = parseAnswer(msg.message);
+      appendAssistantMessage(answer, citations);
+      isThinking = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('queryInput').disabled = false;
+      const lastQ = sessionHistory[sessionHistory.length - 1];
+      if (lastQ) lastQ.answer = answer;
+      if (citations.length) {
+        sessionCitations.unshift({ q: lastQ?.q || '—', refs: citations, ts: now() });
+        renderCitations();
+      }
+    }
+  };
+}
+
+// ── Query ─────────────────────────────────────────────────────────────────────
+function sendQuery() {
+  const ta = document.getElementById('queryInput');
+  const query = ta.value.trim();
+  if (!query || isThinking || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ta.value = '';
+  isThinking = true;
+  document.getElementById('sendBtn').disabled = true;
+  ta.disabled = true;
+  hideChatEmpty();
+  appendUserMessage(query);
+  showThinking();
+  sessionHistory.push({ q: query, ts: now(), answer: '' });
+  renderHistory();
+  clearLogStream();
+  ws.send(JSON.stringify({ query }));
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+}
+
+// ── Chat rendering ─────────────────────────────────────────────────────────────
+function hideChatEmpty() {
+  const el = document.getElementById('chatEmpty');
+  if (el) el.style.display = 'none';
+}
+
+function appendUserMessage(text) {
+  const h = document.getElementById('chatHistory');
+  const row = document.createElement('div');
+  row.className = 'msg-row user';
+  row.innerHTML = `
+    <div>
+      <div class="msg-bubble">${escHtml(text)}</div>
+      <div class="msg-time">${now()}</div>
+    </div>
+    <div class="msg-avatar">👤</div>`;
+  h.appendChild(row); scrollChat();
+}
+
+function appendAssistantMessage(text, citations) {
+  const h = document.getElementById('chatHistory');
+  const row = document.createElement('div');
+  row.className = 'msg-row assistant';
+  const citeHtml = citations.length
+    ? `<div class="citation-block">📋 Audit Evidence:\n${citations.map(escHtml).join('\n')}</div>`
+    : '';
+  row.innerHTML = `
+    <div class="msg-avatar">🔐</div>
+    <div>
+      <div class="msg-bubble">${escHtml(text)}${citeHtml}</div>
+      <div class="msg-time">${now()}</div>
+    </div>`;
+  h.appendChild(row); scrollChat();
+}
+
+function showThinking() {
+  const h = document.getElementById('chatHistory');
+  const row = document.createElement('div');
+  row.className = 'msg-row assistant thinking-row';
+  row.id = 'thinkingRow';
+  row.innerHTML = `
+    <div class="msg-avatar">🔐</div>
+    <div class="msg-bubble thinking-dots"><span></span><span></span><span></span></div>`;
+  h.appendChild(row); scrollChat();
+}
+
+function removeThinking() {
+  const el = document.getElementById('thinkingRow');
+  if (el) el.remove();
+}
+
+function scrollChat() {
+  const h = document.getElementById('chatHistory');
+  h.scrollTop = h.scrollHeight;
+}
+
+// ── Parse answer ──────────────────────────────────────────────────────────────
+function parseAnswer(raw) {
+  const split = raw.split('📋 **Audit Evidence Sources:**');
+  const answer = split[0].trim();
+  const citations = split[1]
+    ? split[1].trim().split('\n').map(l => l.trim()).filter(Boolean)
+    : [];
+  return { answer, citations };
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+function classifyLog(msg) {
+  if (msg.includes('✅') || msg.includes('PASSED') || msg.includes('established')) return 'success';
+  if (msg.includes('⚠️') || msg.includes('FAILED') || msg.includes('failed')) return 'warn';
+  if (msg.includes('⛔') || msg.includes('error') || msg.includes('Error')) return 'error';
+  if (msg.startsWith('[')) return 'node';
+  return 'info';
+}
+
+function addLog(msg, type = 'info') {
+  sessionLogs.push({ msg, type, ts: now() });
+  const stream = document.getElementById('logStream');
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  entry.innerHTML = `<span class="log-ts">${now()}</span><span class="log-msg">${escHtml(msg)}</span>`;
+  stream.appendChild(entry);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function clearLogStream() { document.getElementById('logStream').innerHTML = ''; }
+
+// ── History ───────────────────────────────────────────────────────────────────
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  list.innerHTML = [...sessionHistory].reverse().map((h, i) => `
+    <div class="history-item" onclick="replayHistory(${sessionHistory.length - 1 - i})">
+      <div class="history-q">${escHtml(h.q)}</div>
+      <div class="history-meta">${h.ts}</div>
+    </div>`).join('');
+}
+
+function replayHistory(idx) {
+  const item = sessionHistory[idx];
+  if (!item) return;
+  document.getElementById('queryInput').value = item.q;
+  document.getElementById('queryInput').focus();
+}
+
+// ── Citations ─────────────────────────────────────────────────────────────────
+function renderCitations() {
+  const list = document.getElementById('citationList');
+  list.innerHTML = sessionCitations.map(c => `
+    <div class="citation-item">
+      <div style="color:var(--txt2);font-size:11px;margin-bottom:4px;">Q: ${escHtml(c.q)}</div>
+      ${c.refs.map(r => escHtml(r)).join('\n')}
+      <div style="color:var(--txt3);font-size:10px;margin-top:4px;">${c.ts}</div>
+    </div>`).join('');
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.log-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tabLogs').style.display      = name === 'logs'      ? '' : 'none';
+  document.getElementById('tabHistory').style.display   = name === 'history'   ? '' : 'none';
+  document.getElementById('tabCitations').style.display = name === 'citations' ? '' : 'none';
+}
+
+// ── File upload ───────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+async function handleFiles(files) {
+  for (const file of files) await uploadFile(file);
+}
+
+async function uploadFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const allowed = ['pdf','csv','docx','doc','pptx','ppt','md','html','htm'];
+  if (!allowed.includes(ext)) { showToast(`❌ Unsupported: ${file.name}`, 'error'); return; }
+
+  const id = 'doc_' + Date.now() + Math.random().toString(36).slice(2);
+  addDocItem(id, file.name, file.size, 'loading');
+  addLog(`Uploading ${file.name}…`, 'info');
+
+  const bar = document.getElementById('uploadBar');
+  const progress = document.getElementById('uploadProgress');
+  progress.classList.add('active');
+  bar.style.width = '30%';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    bar.style.width = '60%';
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    bar.style.width = '100%';
+    const data = await res.json();
+    if (data.status === 'success') {
+      updateDocStatus(id, 'ready');
+      uploadedDocs.push(file.name);
+      updateDocCount();
+      addLog(`✅ ${data.message}`, 'success');
+      showToast(`✅ ${file.name} ready`, 'success');
+    } else {
+      removeDocItem(id);
+      addLog(`❌ ${data.message}`, 'error');
+      showToast(`❌ ${data.message}`, 'error');
+    }
+  } catch (err) {
+    removeDocItem(id);
+    addLog(`❌ Upload failed: ${err.message}`, 'error');
+    showToast('Upload failed — server error', 'error');
+  } finally {
+    setTimeout(() => { progress.classList.remove('active'); bar.style.width = '0%'; }, 600);
+  }
+}
+
+function iconFor(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  return { pdf:'📄', csv:'📊', docx:'📝', doc:'📝', pptx:'📑', ppt:'📑', md:'📋', html:'🌐', htm:'🌐' }[ext] || '📁';
+}
+
+function addDocItem(id, name, size, status) {
+  const list = document.getElementById('docList');
+  const div = document.createElement('div');
+  div.className = 'doc-item'; div.id = id;
+  div.innerHTML = `
+    <div class="doc-icon">${iconFor(name)}</div>
+    <div class="doc-info">
+      <div class="doc-name" title="${escHtml(name)}">${escHtml(name)}</div>
+      <div class="doc-meta">${(size/1024).toFixed(1)} KB</div>
+    </div>
+    <div class="doc-status ${status}" id="${id}_status">${status === 'loading' ? '…' : 'Ready'}</div>`;
+  list.appendChild(div);
+}
+
+function updateDocStatus(id, status) {
+  const el = document.getElementById(id + '_status');
+  if (el) { el.className = `doc-status ${status}`; el.textContent = status === 'ready' ? 'Ready' : status; }
+}
+
+function removeDocItem(id) { const el = document.getElementById(id); if (el) el.remove(); }
+
+function updateDocCount() {
+  document.getElementById('docCount').textContent =
+    `${uploadedDocs.length} document${uploadedDocs.length !== 1 ? 's' : ''}`;
+}
+
+// ── Clear session ─────────────────────────────────────────────────────────────
+async function clearSession() {
+  if (!confirm('Clear all documents and reset the knowledge base?')) return;
+  try {
+    const res = await fetch('/clear-session', { method: 'POST' });
+    const data = await res.json();
+    uploadedDocs = []; sessionCitations = []; sessionHistory = [];
+    updateDocCount();
+    document.getElementById('docList').innerHTML = '';
+    document.getElementById('historyList').innerHTML = '';
+    document.getElementById('citationList').innerHTML = '';
+    document.getElementById('chatHistory').innerHTML = `
+      <div class="chat-empty" id="chatEmpty">
+        <div class="empty-icon">🔐</div>
+        <p>Upload your organisation's documents, then ask anything.</p>
+      </div>`;
+    clearLogStream();
+    addLog('✅ ' + data.message, 'success');
+    showToast('✅ Session cleared', 'success');
+  } catch { showToast('Clear failed', 'error'); }
+}
+
+// ── Export logs ───────────────────────────────────────────────────────────────
+function exportLogs() {
+  const text = sessionLogs.map(l => `[${l.ts}] [${l.type.toUpperCase()}] ${l.msg}`).join('\n');
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `docutrust-audit-${Date.now()}.txt`;
+  a.click();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function now() {
+  return new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Apply saved theme icon
+document.getElementById('themeBtn').textContent =
+  document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+
+// Reset backend on every page load
+fetch('/on-page-load', { method: 'POST' })
+  .then(r => r.json())
+  .then(d => { if (d.status === 'ok') console.log('✅ Backend reset on page load'); })
+  .catch(e => console.warn('on-page-load ping failed:', e));
+
+connectWS();
+</script>
+</body>
+</html>

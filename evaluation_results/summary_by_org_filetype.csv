@@ -1,0 +1,21 @@
+Organisation,File Type,Answer Correctness,Groundedness,Hallucination Rate
+Aventro Motors,DOCX,0.8247,0.6758,0.1753
+Aventro Motors,HTML,0.8752,0.6864,0.1248
+Aventro Motors,MD,0.8454,0.6474,0.1546
+Aventro Motors,PDF,0.7489,0.5854,0.2511
+Aventro Motors,PPTX,0.6714,0.6533,0.3286
+Cendara University,DOCX,0.8048,0.6142,0.1952
+Cendara University,HTML,0.8316,0.6185,0.1684
+Cendara University,MD,0.738,0.5573,0.262
+Cendara University,PDF,0.82,0.6503,0.18
+Cendara University,PPTX,0.5588,0.6079,0.4412
+Velvera Technologies,DOCX,0.8644,0.6418,0.1356
+Velvera Technologies,HTML,0.839,0.6237,0.161
+Velvera Technologies,MD,0.8531,0.5817,0.1469
+Velvera Technologies,PDF,0.8183,0.6165,0.1817
+Velvera Technologies,PPTX,0.5339,0.6024,0.4661
+ZX Bank,DOCX,0.8175,0.7356,0.1825
+ZX Bank,HTML,0.8558,0.7491,0.1442
+ZX Bank,MD,0.8957,0.714,0.1043
+ZX Bank,PDF,0.7937,0.7461,0.2063
+ZX Bank,PPTX,0.6093,0.7107,0.3907
