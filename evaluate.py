@@ -83,7 +83,7 @@ FILE_TYPES = [".pdf", ".docx", ".html", ".md", ".pptx"]
 THRESHOLDS = {
     "Answer Correctness": 0.70,
     "Groundedness":       0.60,
-    "Hallucination Rate": 0.25,
+    "Hallucination Rate": 0.20,
 }
 
 METRIC_COLS = list(THRESHOLDS.keys())

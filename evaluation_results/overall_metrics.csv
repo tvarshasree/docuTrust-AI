@@ -1,8 +1,8 @@
 Metric,Score,Threshold,Status
-Answer Correctness,0.7825,≥0.7,✅ PASS
-Groundedness,0.6553,≥0.6,✅ PASS
-Hallucination Rate,0.2175,≤0.25,✅ PASS
-Pipeline Pass Rate,0.882,≥0.8,✅ PASS
-Retry Rate,0.1259,≤0.3,✅ PASS
-Fail Rate,0.118,≤0.2,✅ PASS
-Overall Pass Rate,0.5825,≥0.5,✅ PASS
+Answer Correctness,0.8162,≥0.7,✅ PASS
+Groundedness,0.67,≥0.6,✅ PASS
+Hallucination Rate,0.1838,≤0.2,✅ PASS
+Pipeline Pass Rate,0.9018,≥0.8,✅ PASS
+Retry Rate,0.1064,≤0.3,✅ PASS
+Fail Rate,0.0982,≤0.1,✅ PASS
+Overall Pass Rate,0.6184,≥0.5,✅ PASS
