@@ -1,7 +1,17 @@
 import os
+import math
 from state import AgentState
 import config
 from config import client, cross_encoder
+
+# BGE models require this instruction prefix for search queries (asymmetric retrieval)
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+RELEVANCE_THRESHOLD = 1.5
+
+
+def sigmoid(logit: float) -> float:
+    """Convert unbounded cross-encoder logits into a calibrated 0-1 probability."""
+    return 1.0 / (1.0 + math.exp(-logit))
 
 
 def retrieve_node(state: AgentState):
@@ -12,31 +22,57 @@ def retrieve_node(state: AgentState):
     logs.append(f"🔍 [Attempt {attempts}] Starting retrieval for query:")
     logs.append(f'   "{query}"')
 
-    # Show which files are currently in the knowledge base
-    try:
-        all_docs = config.vector_store.get()
-        sources  = set()
-        for meta in (all_docs.get("metadatas") or []):
-            src = meta.get("source", "")
-            if src:
-                sources.add(os.path.basename(src))
-        if sources:
-            logs.append(f"📂 Knowledge base contains {len(sources)} file(s):")
-            for s in sorted(sources):
-                logs.append(f"   • {s}")
-        else:
-            logs.append("⚠️  Knowledge base is empty — please upload documents first.")
-    except Exception:
-        pass
+    # Show which files are currently in the knowledge base (skipped in batch eval for speed)
+    if os.environ.get("NO_LLM") != "1":
+        try:
+            all_docs = config.vector_store.get()
+            sources  = set()
+            for meta in (all_docs.get("metadatas") or []):
+                src = meta.get("source", "")
+                if src:
+                    sources.add(os.path.basename(src))
+            if sources:
+                logs.append(f"📂 Knowledge base contains {len(sources)} file(s):")
+                for s in sorted(sources):
+                    logs.append(f"   • {s}")
+            else:
+                logs.append("⚠️  Knowledge base is empty — please upload documents first.")
+        except Exception:
+            pass
 
     if attempts == 1:
-        logs.append("🔎 Searching knowledge base…")
-        docs = config.vector_store.similarity_search(query, k=5)
+        logs.append("🔎 Searching knowledge base with BGE query instruction…")
+        search_target = BGE_QUERY_PREFIX + query
+        docs = config.vector_store.similarity_search(search_target, k=5)
     else:
-        search_query = f"detailed information about: {query}"
-        logs.append("🔄 Self-correction: broadening search with rewritten query…")
-        logs.append(f'   ↳ "{search_query}"')
-        docs = config.vector_store.similarity_search(search_query, k=5)
+        logs.append("🔄 Self-correction: generating optimized search query…")
+        use_llm_rewrite = (os.environ.get("NO_LLM", "0") != "1") and (client is not None)
+        if use_llm_rewrite:
+            try:
+                rewrite_prompt = (
+                    "You are an enterprise document retrieval optimizer. "
+                    "Rewrite the following user query into a concise search query containing "
+                    "synonyms and keywords likely found in organizational documents. "
+                    "Respond with ONLY the rewritten query text and nothing else.\n\n"
+                    f"Original query: {query}\n\n"
+                    "Rewritten query:"
+                )
+                res = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=rewrite_prompt,
+                )
+                search_query = res.text.strip().replace('"', '')
+                if not search_query:
+                    search_query = f"detailed information about: {query}"
+            except Exception as e:
+                logs.append(f"   ⚠️ LLM rewrite fallback: {e}")
+                search_query = f"detailed information about: {query}"
+        else:
+            search_query = f"detailed information about: {query}"
+
+        logs.append(f'   ↳ Query reformulated as: "{search_query}"')
+        search_target = BGE_QUERY_PREFIX + search_query
+        docs = config.vector_store.similarity_search(search_target, k=5)
 
     logs.append(f"📄 Retrieved {len(docs)} chunk(s).")
 
@@ -67,25 +103,26 @@ def grade_node(state: AgentState):
     pairs  = [(query, doc.page_content) for doc in docs]
     scores = cross_encoder.predict(pairs)
     best_score = float(max(scores))
+    best_prob  = sigmoid(best_score)
 
-    THRESHOLD = 1.5
-    is_valid  = best_score >= THRESHOLD
+    is_valid  = best_score >= RELEVANCE_THRESHOLD
 
     logs.append(f"📊 Relevance scores for {len(docs)} chunk(s):")
     ranked = sorted(zip(docs, scores.tolist()), key=lambda x: x[1], reverse=True)
     for i, (doc, score) in enumerate(ranked[:5], start=1):
         fname   = os.path.basename(doc.metadata.get("source", "Unknown"))
         page    = doc.metadata.get("page", "?")
-        status  = "✅" if score >= THRESHOLD else "❌"
+        prob    = sigmoid(score)
+        status  = "✅" if score >= RELEVANCE_THRESHOLD else "❌"
         snippet = doc.page_content[:60].replace("\n", " ")
-        logs.append(f"   [{i}] {status} Score: {score:.3f} | {fname} p.{page} | \"{snippet}…\"")
+        logs.append(f"   [{i}] {status} Score: {score:.3f} (Conf: {prob*100:.1f}%) | {fname} p.{page} | \"{snippet}…\"")
 
-    logs.append(f"🏆 Best score: {best_score:.4f}  (threshold ≥ {THRESHOLD})")
+    logs.append(f"🏆 Best score: {best_score:.4f} (Confidence: {best_prob*100:.1f}%, threshold ≥ {RELEVANCE_THRESHOLD})")
 
     if is_valid:
         logs.append("✅ Grading PASSED — proceeding to answer generation.")
     else:
-        logs.append(f"❌ Grading FAILED — best score {best_score:.4f} below threshold {THRESHOLD}.")
+        logs.append(f"❌ Grading FAILED — best score {best_score:.4f} (Conf: {best_prob*100:.1f}%) below threshold {RELEVANCE_THRESHOLD}.")
         logs.append("   Possible reasons:")
         logs.append("   • Uploaded documents may not contain information about this query.")
         logs.append("   • Query phrasing may differ too much from document language.")
@@ -104,12 +141,15 @@ def generate_node(state: AgentState):
     query  = state["query"]
     logs   = state["logs"]
 
-    logs.append("✍️  Generating answer from top-ranked evidence…")
+    logs.append("✍️  Generating answer from verified evidence…")
 
-    ranked   = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
-    top_docs = ranked[:3]
+    ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
+    
+    # Filter out noisy chunks that did not meet the relevance threshold
+    verified_docs = [(doc, score) for doc, score in ranked if score >= RELEVANCE_THRESHOLD]
+    top_docs = verified_docs[:3] if verified_docs else ranked[:1]
 
-    logs.append(f"📌 Using top {len(top_docs)} chunk(s) as context:")
+    logs.append(f"📌 Using top {len(top_docs)} verified chunk(s) as context (irrelevant chunks filtered out):")
     citations      = []
     context_blocks = []
 
@@ -117,13 +157,22 @@ def generate_node(state: AgentState):
         source   = doc.metadata.get("source", "Organisation-File")
         page     = doc.metadata.get("page", 0) + 1
         filename = os.path.basename(source)
-        citations.append(f"[{rank}] {filename} — Page/Row {page}  (score: {score:.3f})")
+        prob     = sigmoid(score)
+        citations.append(f"[{rank}] {filename} — Page/Row {page} (score: {score:.3f}, confidence: {prob*100:.1f}%)")
         context_blocks.append(f"[Source {rank}] {filename}, Page {page}:\n{doc.page_content}")
-        logs.append(f"   [{rank}] {filename}  page {page}  score {score:.3f}")
+        logs.append(f"   [{rank}] {filename}  page {page}  score {score:.3f} (Conf: {prob*100:.1f}%)")
 
     formatted_context = "\n\n---\n\n".join(context_blocks)
 
     logs.append("🤖 Sending verified context to Gemini 2.5 Flash…")
+
+    if client is None:
+        final_answer = (
+            "Verified context facts extracted.\n\n📋 **Audit Evidence Sources:**\n"
+            + "\n".join(citations)
+        )
+        logs.append("✅ Context extracted (offline mode) and audit trail appended.")
+        return {"answer": final_answer, "logs": logs}
 
     prompt = f"""You are DocuTrust, a secure enterprise information assistant.
 Answer the user query using ONLY the verified context facts provided below.
@@ -159,7 +208,7 @@ def fail_node(state: AgentState):
     logs.append("─" * 50)
     logs.append("📋 Failure summary:")
     logs.append("   • Retrieval ran twice — both attempts failed grading.")
-    logs.append("   • No chunk scored above the relevance threshold (1.5).")
+    logs.append(f"   • No chunk scored above the relevance threshold ({RELEVANCE_THRESHOLD}).")
     logs.append("💡 Suggestions to resolve:")
     logs.append("   1. Upload the specific document that contains this information.")
     logs.append("   2. Rephrase the query using terms closer to the document's wording.")

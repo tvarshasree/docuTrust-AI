@@ -51,11 +51,18 @@ _ap.add_argument(
     help="Gemini requests per minute allowed (default 4, free tier limit is 5). "
          "Only used when --no-llm is NOT set."
 )
+_ap.add_argument(
+    "--skip-pptx", action="store_true", default=False,
+    help="Skip PPTX files during evaluation (e.g., if unsupported or noisy)."
+)
 CLI_ARGS, _ = _ap.parse_known_args()
 USE_LLM  = not CLI_ARGS.no_llm
 LLM_RPM  = CLI_ARGS.llm_rpm
 # Seconds to wait between Gemini calls to stay under rate limit
 LLM_DELAY = 60.0 / LLM_RPM   # e.g. 4 rpm → 15s gap
+
+if not USE_LLM:
+    os.environ["NO_LLM"] = "1"
 
 warnings.filterwarnings("ignore")
 
@@ -77,7 +84,7 @@ ORGS = [
     "ZX Bank",
 ]
 
-FILE_TYPES = [".pdf", ".docx", ".html", ".md", ".pptx"]
+FILE_TYPES = [".pdf", ".docx", ".html", ".md"] if CLI_ARGS.skip_pptx else [".pdf", ".docx", ".html", ".md", ".pptx"]
 
 # Thresholds for PASS/FAIL verdict on each metric
 THRESHOLDS = {
@@ -368,8 +375,9 @@ def main():
                 continue
             log(f"      {n_chunks} chunks loaded ✅")
 
-            log(f"    Running {len(org_queries)} queries through nodes.py pipeline…")
-            for _, row in org_queries.iterrows():
+            total_q = len(org_queries)
+            log(f"    Running {total_q} queries through nodes.py pipeline…")
+            for q_idx, (_, row) in enumerate(org_queries.iterrows(), 1):
                 query      = str(row[col_query]).strip()
                 query_type = str(row[col_qtype]).strip() if col_qtype else "—"
                 gt_facts   = parse_facts(row[col_facts])
@@ -389,6 +397,9 @@ def main():
                     "Attempts":           metrics["Attempts"],
                     "Pass":               "✅" if passed else "❌",
                 })
+
+                if q_idx % 50 == 0 or q_idx == total_q:
+                    log(f"      ↳ processed {q_idx}/{total_q} queries…")
 
             log(f"      done ✅")
 

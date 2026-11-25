@@ -10,7 +10,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = genai.Client()
+try:
+    client = genai.Client()
+except Exception:
+    client = None
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu")
 
 COLLECTION_NAME = "docutrust"
