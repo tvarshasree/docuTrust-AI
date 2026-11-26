@@ -17,10 +17,7 @@ markdown
 google-genai
 python-multipart
 beautifulsoup4
-pypdf
 pandas
-rouge-score 
-bert-score 
 numpy
 tabulate
 pdfplumber

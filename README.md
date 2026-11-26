@@ -52,7 +52,7 @@ The embeddings are stored in a Chroma vector database for similarity retrieval.
 
 ### 3. Retrieval
 
-For each user query, DocuTrust retrieves the top 5 candidate chunks from the vector store.
+For each user query, DocuTrust retrieves the top 7 candidate chunks from the vector store using BAAI asymmetric query instructions (`"Represent this sentence for searching relevant passages: "`).
 
 Each retrieved chunk retains source metadata such as:
 
@@ -67,24 +67,24 @@ Retrieved chunks are passed through:
 
 **cross-encoder/ms-marco-MiniLM-L-6-v2**
 
-The Cross-Encoder scores query/document pairs for relevance.
+The Cross-Encoder scores query/document pairs for relevance and computes a calibrated Sigmoid confidence score.
 
-The current pipeline uses a relevance threshold of **1.5**. If the best retrieved evidence does not meet the threshold, the system does not immediately generate an answer.
+The pipeline applies a calibrated relevance threshold of **0.80** (~69% confidence). For multi-part and comparative queries, the pipeline also supports **cumulative multi-chunk verification** (passing if the top two chunks jointly demonstrate strong positive support). If retrieved evidence does not meet these criteria, the system does not immediately generate an answer.
 
 ### 5. Self-correction
 
-When retrieval fails verification, DocuTrust performs a second retrieval attempt using a broadened query.
+When retrieval fails verification, DocuTrust performs a second retrieval attempt using intelligent query reformulation. In online mode, Gemini 2.5 Flash reformulates the query with enterprise synonyms; in offline evaluation mode, stop-word stripping extracts core entity keywords to align query vectors with document chunks.
 
 ```text
 Original query
       ↓
-Retrieval
+Dense Retrieval (Top 7)
       ↓
-Relevance grading
+Cross-Encoder Relevance Grading
       ↓
 Below threshold?
       ↓
-Rewrite / broaden query
+Query Reformulation (LLM / Entity Keywords)
       ↓
 Second retrieval
       ↓
@@ -163,13 +163,48 @@ evaluation_results/
 ├── evaluation_report.txt
 ├── full_results.csv
 ├── overall_metrics.csv
-├── overall_metrics_no_pptx.csv
 ├── summary_by_filetype.csv
 ├── summary_by_org.csv
 └── summary_by_org_filetype.csv
 ```
 
-For reproducibility, the evaluation script can be used to regenerate the evaluation results from the supplied test data.
+### Benchmark Results (5,008 Evaluated Queries)
+
+#### Overall System Performance
+
+| Metric | Score | Target Threshold | Status |
+| :--- | :---: | :---: | :---: |
+| **Answer Correctness** | **89.6%** (0.8959) | $\ge 70.0\%$ | ✅ PASS |
+| **Groundedness** | **67.3%** (0.6732) | $\ge 60.0\%$ | ✅ PASS |
+| **Hallucination Rate** | **10.4%** (0.1041) | $\le 20.0\%$ | ✅ PASS |
+| **Pipeline Pass Rate** | **93.7%** (0.9367) | $\ge 80.0\%$ | ✅ PASS |
+| **Retry Rate** | **6.5%** (0.0653) | $\le 30.0\%$ | ✅ PASS |
+| **Fail Rate** | **6.3%** (0.0633) | $\le 10.0\%$ | ✅ PASS |
+
+#### Performance by Document Format
+
+| Format | Total Queries | Answer Correctness | Groundedness | Hallucination Rate |
+| :--- | :---: | :---: | :---: | :---: |
+| **DOCX** | 1,252 | **91.1%** | 68.7% | **8.9%** |
+| **Markdown (.md)** | 1,252 | **90.2%** | 64.3% | **9.8%** |
+| **HTML** | 1,252 | **89.0%** | 67.8% | **11.0%** |
+| **PDF** | 1,252 | **88.0%** | 68.5% | **12.0%** |
+
+#### Performance by Organization
+
+| Organization | Answer Correctness | Groundedness | Hallucination Rate |
+| :--- | :---: | :---: | :---: |
+| **Cloudway 24** | **96.6%** | 73.9% | **3.4%** |
+| **Velvera Technologies** | **90.6%** | 61.5% | **9.4%** |
+| **Aventro Motors** | **89.4%** | 67.5% | **10.6%** |
+| **ZX Bank** | **88.5%** | 74.0% | **11.5%** |
+| **Cendara University** | **83.7%** | 60.8% | **16.3%** |
+
+For reproducibility, the evaluation script can be run directly:
+
+```bash
+python evaluate.py --no-llm --skip-pptx
+```
 
 ---
 

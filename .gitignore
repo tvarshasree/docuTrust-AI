@@ -1,3 +1,5 @@
 .env*
 __pycache__/
 *.py[cod]
+vector_db/
+test_vector_db/
