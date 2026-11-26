@@ -1,17 +1,30 @@
 import os
 import math
+import re
 from state import AgentState
 import config
 from config import client, cross_encoder
 
 # BGE models require this instruction prefix for search queries (asymmetric retrieval)
 BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
-RELEVANCE_THRESHOLD = 1.5
+RELEVANCE_THRESHOLD = 0.80  # Calibrated for high-precision fact retrieval (~69% confidence)
+RETRIEVAL_TOP_K = 7        # Increased candidate capture for multi-part & catalog queries
 
 
 def sigmoid(logit: float) -> float:
     """Convert unbounded cross-encoder logits into a calibrated 0-1 probability."""
     return 1.0 / (1.0 + math.exp(-logit))
+
+
+def _clean_query_keywords(text: str) -> str:
+    """Extract informative keywords for dense vector retrieval on retry."""
+    stop_words = {
+        "what", "is", "the", "are", "how", "does", "do", "did", "of", "in", "to", "for",
+        "a", "an", "and", "or", "can", "why", "might", "when", "where", "which",
+        "tell", "me", "about", "describe", "explain", "it", "its", "necessary", "should"
+    }
+    tokens = [w for w in re.findall(r"\w+", text.lower()) if w not in stop_words]
+    return " ".join(tokens) if len(tokens) >= 2 else text
 
 
 def retrieve_node(state: AgentState):
@@ -43,7 +56,7 @@ def retrieve_node(state: AgentState):
     if attempts == 1:
         logs.append("🔎 Searching knowledge base with BGE query instruction…")
         search_target = BGE_QUERY_PREFIX + query
-        docs = config.vector_store.similarity_search(search_target, k=5)
+        docs = config.vector_store.similarity_search(search_target, k=RETRIEVAL_TOP_K)
     else:
         logs.append("🔄 Self-correction: generating optimized search query…")
         use_llm_rewrite = (os.environ.get("NO_LLM", "0") != "1") and (client is not None)
@@ -63,16 +76,16 @@ def retrieve_node(state: AgentState):
                 )
                 search_query = res.text.strip().replace('"', '')
                 if not search_query:
-                    search_query = f"detailed information about: {query}"
+                    search_query = _clean_query_keywords(query)
             except Exception as e:
                 logs.append(f"   ⚠️ LLM rewrite fallback: {e}")
-                search_query = f"detailed information about: {query}"
+                search_query = _clean_query_keywords(query)
         else:
-            search_query = f"detailed information about: {query}"
+            search_query = _clean_query_keywords(query)
 
         logs.append(f'   ↳ Query reformulated as: "{search_query}"')
         search_target = BGE_QUERY_PREFIX + search_query
-        docs = config.vector_store.similarity_search(search_target, k=5)
+        docs = config.vector_store.similarity_search(search_target, k=RETRIEVAL_TOP_K)
 
     logs.append(f"📄 Retrieved {len(docs)} chunk(s).")
 
@@ -105,22 +118,28 @@ def grade_node(state: AgentState):
     best_score = float(max(scores))
     best_prob  = sigmoid(best_score)
 
-    is_valid  = best_score >= RELEVANCE_THRESHOLD
+    ranked = sorted(zip(docs, scores.tolist()), key=lambda x: x[1], reverse=True)
+
+    # Verification: single high-confidence chunk OR cumulative multi-chunk support for comparative queries
+    single_pass = best_score >= RELEVANCE_THRESHOLD
+    cumulative_pass = len(ranked) >= 2 and ranked[0][1] >= 0.60 and ranked[1][1] >= 0.35
+    is_valid = single_pass or cumulative_pass
 
     logs.append(f"📊 Relevance scores for {len(docs)} chunk(s):")
-    ranked = sorted(zip(docs, scores.tolist()), key=lambda x: x[1], reverse=True)
     for i, (doc, score) in enumerate(ranked[:5], start=1):
         fname   = os.path.basename(doc.metadata.get("source", "Unknown"))
         page    = doc.metadata.get("page", "?")
         prob    = sigmoid(score)
-        status  = "✅" if score >= RELEVANCE_THRESHOLD else "❌"
+        chunk_valid = score >= RELEVANCE_THRESHOLD or (cumulative_pass and score >= 0.35)
+        status  = "✅" if chunk_valid else "❌"
         snippet = doc.page_content[:60].replace("\n", " ")
         logs.append(f"   [{i}] {status} Score: {score:.3f} (Conf: {prob*100:.1f}%) | {fname} p.{page} | \"{snippet}…\"")
 
     logs.append(f"🏆 Best score: {best_score:.4f} (Confidence: {best_prob*100:.1f}%, threshold ≥ {RELEVANCE_THRESHOLD})")
 
     if is_valid:
-        logs.append("✅ Grading PASSED — proceeding to answer generation.")
+        pass_reason = "single chunk" if single_pass else "cumulative multi-chunk context"
+        logs.append(f"✅ Grading PASSED via {pass_reason} — proceeding to answer generation.")
     else:
         logs.append(f"❌ Grading FAILED — best score {best_score:.4f} (Conf: {best_prob*100:.1f}%) below threshold {RELEVANCE_THRESHOLD}.")
         logs.append("   Possible reasons:")
@@ -145,8 +164,8 @@ def generate_node(state: AgentState):
 
     ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
     
-    # Filter out noisy chunks that did not meet the relevance threshold
-    verified_docs = [(doc, score) for doc, score in ranked if score >= RELEVANCE_THRESHOLD]
+    # Filter out noisy chunks that did not meet the positive relevance threshold (score < 0.35)
+    verified_docs = [(doc, score) for doc, score in ranked if score >= 0.35]
     top_docs = verified_docs[:3] if verified_docs else ranked[:1]
 
     logs.append(f"📌 Using top {len(top_docs)} verified chunk(s) as context (irrelevant chunks filtered out):")

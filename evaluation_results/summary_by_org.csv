@@ -1,6 +1,6 @@
 Organisation,Answer Correctness,Groundedness,Hallucination Rate
-Aventro Motors,0.8454,0.6739,0.1546
-Cendara University,0.7981,0.606,0.2019
-Cloudway 24,0.952,0.7374,0.048
-Velvera Technologies,0.8411,0.6115,0.1589
-ZX Bank,0.8411,0.7375,0.1589
+Aventro Motors,0.8937,0.6745,0.1063
+Cendara University,0.8369,0.6075,0.1631
+Cloudway 24,0.9657,0.7389,0.0343
+Velvera Technologies,0.9061,0.6151,0.0939
+ZX Bank,0.8852,0.7399,0.1148
